@@ -3,13 +3,12 @@ import sqlite3
 from datetime import datetime
 import pandas as pd
 import openai
-import plotly.express as px
 from streamlit_calendar import calendar
 
-# 🎯 OpenAI API Key (보안 적용)
+# OpenAI API Key (보안 적용)
 openai.api_key = st.secrets["general"]["OPENAI_API_KEY"]
 
-# 🎯 DB 연결 및 초기화
+# DB 연결 및 초기화
 def init_db():
     conn = sqlite3.connect('gratitude_journal.db', check_same_thread=False)
     c = conn.cursor()
@@ -28,8 +27,6 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             date TEXT,
             student_id INTEGER,
-            entry_number INTEGER,
-            target TEXT,
             content TEXT,
             shared INTEGER DEFAULT 0,
             ai_feedback TEXT,
@@ -42,7 +39,7 @@ def init_db():
 
 conn, c = init_db()
 
-# 🎯 유틸리티 함수
+# 유틸리티 함수
 def check_login(username, password):
     c.execute("SELECT id, role FROM users WHERE username = ? AND password = ?", (username, password))
     return c.fetchone()
@@ -55,29 +52,31 @@ def register_user(username, password, role="student"):
     except sqlite3.IntegrityError:
         return False
 
-def generate_feedback(content):
-    if not content.strip():
-        return ""
-    prompt = f"'{content}' 이 감사 내용에 대해 학생을 따뜻하게 격려하는 피드백 한 문장 생성."
+# AI 긍정적 사고 전환 피드백 생성
+def generate_positive_feedback(content):
+    prompt = (
+        f"학생이 작성한 감사일기입니다:\n\n\"{content}\"\n\n"
+        f"이 글에서 혹시 부정적 표현이 있다면 긍정적 사고로 전환하도록 도와주고, 학생이 스스로 감사함을 느낄 수 있도록 짧고 따뜻하게 한두 문장으로 피드백을 작성해주세요."
+    )
     try:
         response = openai.ChatCompletion.create(
             model="gpt-4o",
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=50,
+            max_tokens=100,
             temperature=0.7
         )
         return response.choices[0].message['content'].strip()
     except:
         return "AI 피드백 생성 실패"
 
-# 🎯 Streamlit 기본 세팅
+# Streamlit 기본 세팅
 st.set_page_config(page_title="AI 감사일기", page_icon="📘", layout="wide")
 st.markdown("<h1 style='text-align:center; color:#4682B4;'>💙 AI 기반 감사일기 시스템 💙</h1>", unsafe_allow_html=True)
 
 if "user" not in st.session_state:
     st.session_state.user = None
 
-# 🎯 로그인 & 회원가입 화면
+# 로그인 & 회원가입 화면
 if st.session_state.user is None:
     tab_login, tab_register = st.tabs(["🔑 로그인", "📝 회원가입"])
     
@@ -102,46 +101,41 @@ if st.session_state.user is None:
             else:
                 st.error("이미 존재하는 아이디입니다.")
 
-# 🎯 로그인 이후 메인 화면
+# 로그인 이후 메인 화면
 else:
     st.sidebar.write(f"👋 {st.session_state.user['username']}님 ({st.session_state.user['role']})")
     if st.sidebar.button("로그아웃"):
         st.session_state.user = None
         st.rerun()
 
-    # 🎯 학생 화면
+    # 학생 화면
     if st.session_state.user['role'] == "student":
 
-        tab_write, tab_calendar, tab_stats = st.tabs(["🌸 감사일기 작성", "📅 감사일기 캘린더", "📊 작성 통계"])
+        tab_write, tab_calendar, tab_share, tab_stats = st.tabs(["🌸 감사일기 작성", "📅 감사일기 캘린더", "🌼 공유 감사일기 보기", "📊 작성 통계"])
 
+        # 감사일기 작성 탭
         with tab_write:
             st.subheader("오늘의 감사일기 작성")
             today = datetime.now().strftime("%Y-%m-%d")
-            entries = []
 
             with st.form("gratitude_form"):
-                for i in range(1, 4):
-                    col1, col2 = st.columns([1, 3])
-                    with col1:
-                        target = st.text_input(f"감사 대상 {i}", key=f"target_{i}")
-                    with col2:
-                        content = st.text_input(f"감사 내용 {i}", key=f"content_{i}")
-                    entries.append((target.strip(), content.strip()))
-                
-                share_option = st.checkbox("익명으로 공유")
+                content = st.text_area("오늘 하루 감사했던 일을 자유롭게 작성해보세요.", height=300)
+                share_option = st.checkbox("다른 학생들과 공유하기")
                 submitted = st.form_submit_button("저장하기")
 
                 if submitted:
-                    for idx, (target, content) in enumerate(entries, start=1):
-                        if target or content:
-                            ai_feedback = generate_feedback(content)
-                            c.execute('''
-                                INSERT INTO journal (date, student_id, entry_number, target, content, shared, ai_feedback)
-                                VALUES (?, ?, ?, ?, ?, ?, ?)
-                            ''', (today, st.session_state.user['id'], idx, target, content, int(share_option), ai_feedback))
-                    conn.commit()
-                    st.success("감사일기 저장 완료!")
+                    if content.strip() == "":
+                        st.warning("내용을 입력해주세요.")
+                    else:
+                        ai_feedback = generate_positive_feedback(content)
+                        c.execute('''
+                            INSERT INTO journal (date, student_id, content, shared, ai_feedback)
+                            VALUES (?, ?, ?, ?, ?)
+                        ''', (today, st.session_state.user['id'], content.strip(), int(share_option), ai_feedback))
+                        conn.commit()
+                        st.success("감사일기 저장 완료!")
 
+        # 캘린더 탭
         with tab_calendar:
             st.subheader("📅 나의 감사일기 캘린더")
             c.execute('SELECT DISTINCT date FROM journal WHERE student_id = ?', (st.session_state.user['id'],))
@@ -151,15 +145,34 @@ else:
 
             sel_date = st.date_input("상세 보기 날짜 선택")
             sel_date_str = sel_date.strftime("%Y-%m-%d")
-            c.execute('SELECT target, content, ai_feedback FROM journal WHERE student_id = ? AND date = ?', (st.session_state.user['id'], sel_date_str))
+            c.execute('SELECT content, ai_feedback FROM journal WHERE student_id = ? AND date = ?', (st.session_state.user['id'], sel_date_str))
             results = c.fetchall()
             if results:
-                for idx, (target, content, feedback) in enumerate(results, start=1):
-                    st.markdown(f"**{idx}. {target}**: {content}")
+                for idx, (content, feedback) in enumerate(results, start=1):
+                    st.markdown(f"**내용:** {content}")
                     st.markdown(f"🌟 AI 피드백: {feedback}")
             else:
                 st.info("해당 날짜에는 작성 기록이 없습니다.")
 
+        # 공유 감사일기 탭
+        with tab_share:
+            st.subheader("🌼 다른 학생들의 감사일기")
+            c.execute('''
+                SELECT u.username, j.date, j.content, j.ai_feedback
+                FROM journal j
+                JOIN users u ON j.student_id = u.id
+                WHERE shared = 1
+                ORDER BY j.date DESC
+            ''')
+            shared_entries = c.fetchall()
+            for username, date, content, feedback in shared_entries:
+                with st.container():
+                    st.markdown(f"🗓 **{date}** / 작성자: {username}")
+                    st.markdown(f"💬 {content}")
+                    st.markdown(f"🌟 AI 피드백: {feedback}")
+                    st.markdown("---")
+
+        # 작성 통계 탭
         with tab_stats:
             st.subheader("📊 작성 통계")
             c.execute('SELECT COUNT(DISTINCT date) FROM journal WHERE student_id = ?', (st.session_state.user['id'],))
@@ -168,9 +181,9 @@ else:
 
             c.execute('SELECT COUNT(*) FROM journal WHERE student_id = ?', (st.session_state.user['id'],))
             total_entries = c.fetchone()[0]
-            st.metric("총 작성 항목 수", total_entries)
+            st.metric("총 작성 기록 수", total_entries)
 
-    # 🎯 관리자 화면 (교사)
+    # 관리자 화면 (교사)
     else:
         st.subheader("📊 전체 학생 감사일기 관리")
 
@@ -183,14 +196,14 @@ else:
 
         if selected_student == "전체 보기":
             c.execute('''
-                SELECT u.username, j.date, j.target, j.content, j.ai_feedback
+                SELECT u.username, j.date, j.content, j.ai_feedback
                 FROM journal j
                 JOIN users u ON j.student_id = u.id
                 ORDER BY j.date DESC
             ''')
         else:
             c.execute('''
-                SELECT u.username, j.date, j.target, j.content, j.ai_feedback
+                SELECT u.username, j.date, j.content, j.ai_feedback
                 FROM journal j
                 JOIN users u ON j.student_id = u.id
                 WHERE u.username = ?
@@ -198,7 +211,7 @@ else:
             ''', (selected_student,))
             
         rows = c.fetchall()
-        df = pd.DataFrame(rows, columns=["학생", "날짜", "대상", "내용", "AI 피드백"])
+        df = pd.DataFrame(rows, columns=["학생", "날짜", "내용", "AI 피드백"])
         st.dataframe(df)
 
         st.download_button("📥 CSV 다운로드", data=df.to_csv(index=False), file_name="gratitude_journal.csv", mime="text/csv")
