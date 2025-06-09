@@ -2,11 +2,10 @@ import streamlit as st
 import sqlite3
 from datetime import datetime
 import pandas as pd
-import openai
 from openai import OpenAI
 from streamlit_calendar import calendar
 
-# 🔐 OpenAI 프로젝트 키 대응 (Secrets에서 값 받아오기)
+# 🔐 OpenAI 프로젝트 키 대응
 client = OpenAI(
     api_key=st.secrets["general"]["OPENAI_API_KEY"],
     organization=st.secrets["general"]["OPENAI_ORG"],
@@ -44,7 +43,7 @@ def init_db():
 
 conn, c = init_db()
 
-# 유틸리티 함수
+# 로그인 유틸리티
 def check_login(username, password):
     c.execute("SELECT id, role FROM users WHERE username = ? AND password = ?", (username, password))
     return c.fetchone()
@@ -57,7 +56,7 @@ def register_user(username, password, role="student"):
     except sqlite3.IntegrityError:
         return False
 
-# 최신 openai 1.x 대응 GPT-4o 피드백 생성
+# GPT-4o 긍정 피드백 생성
 def generate_positive_feedback(content):
     prompt = (
         f"학생이 작성한 감사일기입니다:\n\n\"{content}\"\n\n"
@@ -74,13 +73,12 @@ def generate_positive_feedback(content):
     except Exception as e:
         return f"AI 피드백 생성 실패: {str(e)}"
 
-# Streamlit 기본 세팅
+# Streamlit 세팅
 st.set_page_config(page_title="AI 감사일기", page_icon="📘", layout="wide")
 st.markdown("<h1 style='text-align:center; color:#4682B4;'>💙 AI 기반 감사일기 시스템 💙</h1>", unsafe_allow_html=True)
 
 if "user" not in st.session_state:
     st.session_state.user = None
-
 # 로그인 & 회원가입 화면
 if st.session_state.user is None:
     tab_login, tab_register = st.tabs(["🔑 로그인", "📝 회원가입"])
@@ -118,11 +116,10 @@ else:
 
         tab_write, tab_calendar, tab_share, tab_stats = st.tabs(["🌸 감사일기 작성", "📅 감사일기 캘린더", "🌼 공유 감사일기 보기", "📊 작성 통계"])
 
-        # 감사일기 작성 탭
+        # 작성 탭
         with tab_write:
             st.subheader("오늘의 감사일기 작성")
             today = datetime.now().strftime("%Y-%m-%d")
-
             content = st.text_area("오늘 하루 감사했던 일을 자유롭게 작성해보세요.", height=300)
 
             if 'ai_feedback' not in st.session_state:
@@ -152,9 +149,9 @@ else:
                     st.success("감사일기 저장 완료!")
                     st.session_state.ai_feedback = ""
 
-        # 캘린더 탭
+        # 월별 캘린더 탭
         with tab_calendar:
-            st.subheader("📅 나의 감사일기 캘린더")
+            st.subheader("📅 나의 감사일기 월별 캘린더")
             c.execute('SELECT DISTINCT date FROM journal WHERE student_id = ?', (st.session_state.user['id'],))
             dates = [row[0] for row in c.fetchall()]
             events = [{"title": "✅ 작성 완료", "start": d} for d in dates]
@@ -162,12 +159,13 @@ else:
             calendar(events=events, options={
                 "initialView": "dayGridMonth",
                 "locale": "ko",
-                "height": 500,
+                "height": 600,
                 "headerToolbar": {
                     "left": "prev,next today",
                     "center": "title",
-                    "right": "dayGridMonth,timeGridWeek"
-                }
+                    "right": "dayGridMonth"
+                },
+                "eventDisplay": "block",
             })
 
             sel_date = st.date_input("상세 보기 날짜 선택")
@@ -175,13 +173,13 @@ else:
             c.execute('SELECT content, ai_feedback FROM journal WHERE student_id = ? AND date = ?', (st.session_state.user['id'], sel_date_str))
             results = c.fetchall()
             if results:
-                for idx, (content, feedback) in enumerate(results, start=1):
+                for content, feedback in results:
                     st.markdown(f"**내용:** {content}")
                     st.markdown(f"🌟 AI 피드백: {feedback}")
             else:
                 st.info("해당 날짜에는 작성 기록이 없습니다.")
 
-        # 공유 감사일기 탭
+        # 공유된 감사일기 탭
         with tab_share:
             st.subheader("🌼 다른 학생들의 감사일기")
             c.execute('''
@@ -210,17 +208,15 @@ else:
             total_entries = c.fetchone()[0]
             st.metric("총 작성 기록 수", total_entries)
 
-    # 관리자 화면 (교사)
+    # 관리자 (교사) 화면
     else:
         st.subheader("📊 전체 학생 감사일기 관리")
-
         c.execute('SELECT u.username, COUNT(DISTINCT j.date) FROM users u LEFT JOIN journal j ON u.id = j.student_id WHERE u.role="student" GROUP BY u.id')
         data = c.fetchall()
         df_stats = pd.DataFrame(data, columns=["학생", "작성일 수"])
         st.dataframe(df_stats)
 
         selected_student = st.selectbox("학생 선택", ["전체 보기"] + list(df_stats["학생"]))
-
         if selected_student == "전체 보기":
             c.execute('''
                 SELECT u.username, j.date, j.content, j.ai_feedback
@@ -236,9 +232,8 @@ else:
                 WHERE u.username = ?
                 ORDER BY j.date DESC
             ''', (selected_student,))
-            
+
         rows = c.fetchall()
         df = pd.DataFrame(rows, columns=["학생", "날짜", "내용", "AI 피드백"])
         st.dataframe(df)
-
         st.download_button("📥 CSV 다운로드", data=df.to_csv(index=False), file_name="gratitude_journal.csv", mime="text/csv")
