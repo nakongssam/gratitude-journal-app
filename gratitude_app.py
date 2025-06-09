@@ -88,7 +88,7 @@ if st.session_state.user is None:
             result = check_login(username, password)
             if result:
                 st.session_state.user = {"id": result[0], "username": username, "role": result[1]}
-                st.experimental_rerun()
+                st.rerun()
             else:
                 st.error("아이디 또는 비밀번호가 올바르지 않습니다.")
     
@@ -107,7 +107,7 @@ else:
     st.sidebar.write(f"👋 {st.session_state.user['username']}님 ({st.session_state.user['role']})")
     if st.sidebar.button("로그아웃"):
         st.session_state.user = None
-        st.experimental_rerun()
+        st.rerun()
 
     # 🎯 학생 화면
     if st.session_state.user['role'] == "student":
