@@ -119,13 +119,17 @@ else:
             today = datetime.now().strftime("%Y-%m-%d")
             entries = []
 
-            with st.form("gratitude_form"):
-                for i in range(1, 4):
+        with st.form("gratitude_form"):
+            for i in range(1, 4):
+                col1, col2 = st.columns([1, 3])
+                with col1:
                     target = st.text_input(f"감사 대상 {i}", key=f"target_{i}")
+                with col2:
                     content = st.text_input(f"감사 내용 {i}", key=f"content_{i}")
-                    entries.append((target.strip(), content.strip()))
-                share_option = st.checkbox("익명으로 공유")
-                submitted = st.form_submit_button("저장하기")
+                entries.append((target.strip(), content.strip()))
+            share_option = st.checkbox("익명으로 공유")
+            submitted = st.form_submit_button("저장하기")
+
                 
                 if submitted:
                     for idx, (target, content) in enumerate(entries, start=1):
