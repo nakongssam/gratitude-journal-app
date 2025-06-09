@@ -66,8 +66,8 @@ def generate_positive_feedback(content):
             temperature=0.7
         )
         return response.choices[0].message['content'].strip()
-    except:
-        return "AI 피드백 생성 실패"
+    except Exception as e:
+        return f"AI 피드백 생성 실패: {str(e)}"
 
 # Streamlit 기본 세팅
 st.set_page_config(page_title="AI 감사일기", page_icon="📘", layout="wide")
@@ -118,22 +118,38 @@ else:
             st.subheader("오늘의 감사일기 작성")
             today = datetime.now().strftime("%Y-%m-%d")
 
-            with st.form("gratitude_form"):
-                content = st.text_area("오늘 하루 감사했던 일을 자유롭게 작성해보세요.", height=300)
-                share_option = st.checkbox("다른 학생들과 공유하기")
-                submitted = st.form_submit_button("저장하기")
+            content = st.text_area("오늘 하루 감사했던 일을 자유롭게 작성해보세요.", height=300)
 
-                if submitted:
-                    if content.strip() == "":
-                        st.warning("내용을 입력해주세요.")
-                    else:
-                        ai_feedback = generate_positive_feedback(content)
-                        c.execute('''
-                            INSERT INTO journal (date, student_id, content, shared, ai_feedback)
-                            VALUES (?, ?, ?, ?, ?)
-                        ''', (today, st.session_state.user['id'], content.strip(), int(share_option), ai_feedback))
-                        conn.commit()
-                        st.success("감사일기 저장 완료!")
+            # AI 피드백 상태 초기화
+            if 'ai_feedback' not in st.session_state:
+                st.session_state.ai_feedback = ""
+
+            # 피드백 생성 버튼
+            if st.button("AI 피드백 생성하기"):
+                if content.strip() == "":
+                    st.warning("내용을 먼저 작성해주세요.")
+                else:
+                    with st.spinner("AI 피드백 생성 중..."):
+                        st.session_state.ai_feedback = generate_positive_feedback(content)
+
+            # 피드백 출력
+            if st.session_state.ai_feedback:
+                st.success("🌟 AI 피드백:")
+                st.write(st.session_state.ai_feedback)
+
+            # 저장하기
+            share_option = st.checkbox("다른 학생들과 공유하기")
+            if st.button("최종 저장하기"):
+                if content.strip() == "":
+                    st.warning("내용을 먼저 작성해주세요.")
+                else:
+                    c.execute('''
+                        INSERT INTO journal (date, student_id, content, shared, ai_feedback)
+                        VALUES (?, ?, ?, ?, ?)
+                    ''', (today, st.session_state.user['id'], content.strip(), int(share_option), st.session_state.ai_feedback))
+                    conn.commit()
+                    st.success("감사일기 저장 완료!")
+                    st.session_state.ai_feedback = ""
 
         # 캘린더 탭
         with tab_calendar:
