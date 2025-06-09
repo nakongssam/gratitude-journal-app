@@ -3,10 +3,11 @@ import sqlite3
 from datetime import datetime
 import pandas as pd
 import openai
+from openai import OpenAI
 from streamlit_calendar import calendar
 
-# OpenAI API Key (보안 적용)
-openai.api_key = st.secrets["general"]["OPENAI_API_KEY"]
+# OpenAI API Key (보안 적용, 최신 openai 패키지 방식)
+client = OpenAI(api_key=st.secrets["general"]["OPENAI_API_KEY"])
 
 # DB 연결 및 초기화
 def init_db():
@@ -52,20 +53,20 @@ def register_user(username, password, role="student"):
     except sqlite3.IntegrityError:
         return False
 
-# AI 긍정적 사고 전환 피드백 생성
+# 최신 openai 1.x 대응 GPT-4o 피드백 생성
 def generate_positive_feedback(content):
     prompt = (
         f"학생이 작성한 감사일기입니다:\n\n\"{content}\"\n\n"
         f"이 글에서 혹시 부정적 표현이 있다면 긍정적 사고로 전환하도록 도와주고, 학생이 스스로 감사함을 느낄 수 있도록 짧고 따뜻하게 한두 문장으로 피드백을 작성해주세요."
     )
     try:
-        response = openai.ChatCompletion.create(
+        response = client.chat.completions.create(
             model="gpt-4o",
             messages=[{"role": "user", "content": prompt}],
             max_tokens=100,
             temperature=0.7
         )
-        return response.choices[0].message['content'].strip()
+        return response.choices[0].message.content.strip()
     except Exception as e:
         return f"AI 피드백 생성 실패: {str(e)}"
 
@@ -124,7 +125,6 @@ else:
             if 'ai_feedback' not in st.session_state:
                 st.session_state.ai_feedback = ""
 
-            # 피드백 생성 버튼
             if st.button("AI 피드백 생성하기"):
                 if content.strip() == "":
                     st.warning("내용을 먼저 작성해주세요.")
@@ -132,12 +132,10 @@ else:
                     with st.spinner("AI 피드백 생성 중..."):
                         st.session_state.ai_feedback = generate_positive_feedback(content)
 
-            # 피드백 출력
             if st.session_state.ai_feedback:
                 st.success("🌟 AI 피드백:")
                 st.write(st.session_state.ai_feedback)
 
-            # 저장하기
             share_option = st.checkbox("다른 학생들과 공유하기")
             if st.button("최종 저장하기"):
                 if content.strip() == "":
@@ -151,13 +149,23 @@ else:
                     st.success("감사일기 저장 완료!")
                     st.session_state.ai_feedback = ""
 
-        # 캘린더 탭
+        # 캘린더 탭 (작성한 날짜 ✅ 표시)
         with tab_calendar:
             st.subheader("📅 나의 감사일기 캘린더")
             c.execute('SELECT DISTINCT date FROM journal WHERE student_id = ?', (st.session_state.user['id'],))
             dates = [row[0] for row in c.fetchall()]
-            events = [{"title": "작성 완료", "start": d} for d in dates]
-            calendar(events=events, options={"initialView": "dayGridMonth", "locale": "ko"})
+            events = [{"title": "✅ 작성 완료", "start": d} for d in dates]
+
+            calendar(events=events, options={
+                "initialView": "dayGridMonth",
+                "locale": "ko",
+                "height": 500,
+                "headerToolbar": {
+                    "left": "prev,next today",
+                    "center": "title",
+                    "right": "dayGridMonth,timeGridWeek"
+                }
+            })
 
             sel_date = st.date_input("상세 보기 날짜 선택")
             sel_date_str = sel_date.strftime("%Y-%m-%d")
