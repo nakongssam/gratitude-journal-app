@@ -212,4 +212,33 @@ else:
 
     # 관리자 화면 (교사)
     else:
-        st.subheader("📊 전체 학생 감사일
+        st.subheader("📊 전체 학생 감사일기 관리")
+
+        c.execute('SELECT u.username, COUNT(DISTINCT j.date) FROM users u LEFT JOIN journal j ON u.id = j.student_id WHERE u.role="student" GROUP BY u.id')
+        data = c.fetchall()
+        df_stats = pd.DataFrame(data, columns=["학생", "작성일 수"])
+        st.dataframe(df_stats)
+
+        selected_student = st.selectbox("학생 선택", ["전체 보기"] + list(df_stats["학생"]))
+
+        if selected_student == "전체 보기":
+            c.execute('''
+                SELECT u.username, j.date, j.content, j.ai_feedback
+                FROM journal j
+                JOIN users u ON j.student_id = u.id
+                ORDER BY j.date DESC
+            ''')
+        else:
+            c.execute('''
+                SELECT u.username, j.date, j.content, j.ai_feedback
+                FROM journal j
+                JOIN users u ON j.student_id = u.id
+                WHERE u.username = ?
+                ORDER BY j.date DESC
+            ''', (selected_student,))
+            
+        rows = c.fetchall()
+        df = pd.DataFrame(rows, columns=["학생", "날짜", "내용", "AI 피드백"])
+        st.dataframe(df)
+
+        st.download_button("📥 CSV 다운로드", data=df.to_csv(index=False), file_name="gratitude_journal.csv", mime="text/csv")
