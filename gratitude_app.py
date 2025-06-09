@@ -6,8 +6,12 @@ import openai
 from openai import OpenAI
 from streamlit_calendar import calendar
 
-# OpenAI API Key (보안 적용, 최신 openai 패키지 방식)
-client = OpenAI(api_key=st.secrets["general"]["OPENAI_API_KEY"])
+# 🔐 OpenAI 프로젝트 키 대응 (Secrets에서 값 받아오기)
+client = OpenAI(
+    api_key=st.secrets["general"]["OPENAI_API_KEY"],
+    organization=st.secrets["general"]["OPENAI_ORG"],
+    project=st.secrets["general"]["OPENAI_PROJECT"]
+)
 
 # DB 연결 및 초기화
 def init_db():
@@ -121,7 +125,6 @@ else:
 
             content = st.text_area("오늘 하루 감사했던 일을 자유롭게 작성해보세요.", height=300)
 
-            # AI 피드백 상태 초기화
             if 'ai_feedback' not in st.session_state:
                 st.session_state.ai_feedback = ""
 
@@ -149,7 +152,7 @@ else:
                     st.success("감사일기 저장 완료!")
                     st.session_state.ai_feedback = ""
 
-        # 캘린더 탭 (작성한 날짜 ✅ 표시)
+        # 캘린더 탭
         with tab_calendar:
             st.subheader("📅 나의 감사일기 캘린더")
             c.execute('SELECT DISTINCT date FROM journal WHERE student_id = ?', (st.session_state.user['id'],))
@@ -209,33 +212,4 @@ else:
 
     # 관리자 화면 (교사)
     else:
-        st.subheader("📊 전체 학생 감사일기 관리")
-
-        c.execute('SELECT u.username, COUNT(DISTINCT j.date) FROM users u LEFT JOIN journal j ON u.id = j.student_id WHERE u.role="student" GROUP BY u.id')
-        data = c.fetchall()
-        df_stats = pd.DataFrame(data, columns=["학생", "작성일 수"])
-        st.dataframe(df_stats)
-
-        selected_student = st.selectbox("학생 선택", ["전체 보기"] + list(df_stats["학생"]))
-
-        if selected_student == "전체 보기":
-            c.execute('''
-                SELECT u.username, j.date, j.content, j.ai_feedback
-                FROM journal j
-                JOIN users u ON j.student_id = u.id
-                ORDER BY j.date DESC
-            ''')
-        else:
-            c.execute('''
-                SELECT u.username, j.date, j.content, j.ai_feedback
-                FROM journal j
-                JOIN users u ON j.student_id = u.id
-                WHERE u.username = ?
-                ORDER BY j.date DESC
-            ''', (selected_student,))
-            
-        rows = c.fetchall()
-        df = pd.DataFrame(rows, columns=["학생", "날짜", "내용", "AI 피드백"])
-        st.dataframe(df)
-
-        st.download_button("📥 CSV 다운로드", data=df.to_csv(index=False), file_name="gratitude_journal.csv", mime="text/csv")
+        st.subheader("📊 전체 학생 감사일
